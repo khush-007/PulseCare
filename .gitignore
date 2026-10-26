@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+node_modules/
+frontend/dist/
+*.db
+*.sqlite
+*.sqlite3
+.pytest_cache/
+
+pulsecare-source.zip
+uploaded_documents/
