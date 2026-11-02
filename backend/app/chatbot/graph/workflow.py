@@ -35,13 +35,14 @@ def wrapped_query_understanding(state: ChatbotState, config: RunnableConfig) -> 
     return query_understanding_node(state)
 
 
-def wrapped_router(state: ChatbotState, config: RunnableConfig) -> Dict[str, Any]:
-    return router_node(state)
+async def wrapped_router(state: ChatbotState, config: RunnableConfig) -> Dict[str, Any]:
+    return await router_node(state)
 
 
 async def wrapped_retriever(state: ChatbotState, config: RunnableConfig) -> Dict[str, Any]:
     db: AsyncSession = config.get("configurable", {}).get("db")
-    return await retriever_node(state, db)
+    current_user: Optional[User] = config.get("configurable", {}).get("current_user")
+    return await retriever_node(state, db, current_user)
 
 
 def wrapped_document_grader(state: ChatbotState, config: RunnableConfig) -> Dict[str, Any]:

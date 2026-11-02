@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.models.chatbot import KnowledgeDocumentChunk
 from backend.app.core.database import async_sessionmaker
-from backend.app.chatbot.graph.nodes.retriever_node import retriever_node
+from backend.app.chatbot.rag.retriever import hybrid_retrieve
 
 @pytest.fixture
 async def db_session():
@@ -48,16 +48,16 @@ async def test_retrieval_user_isolation(db_session: AsyncSession):
     await db_session.commit()
 
     state_user1 = {"routes": ["health_general"], "user_query": "query1", "user_id": 1}
-    result1 = await retriever_node(state_user1, db_session)
-    docs1 = result1.get("retrieved_docs", [])
-    assert len(docs1) == 1
-    assert docs1[0]["doc_id"] == "doc1"
+    docs1 = await hybrid_retrieve("query1", db_session, user_id=state_user1["user_id"], doc_type_filter="health_general")
+    # Shared public knowledge is available to authenticated users, but another
+    # user's private document must never be returned.
+    assert any(doc.doc_id == "doc1" for doc in docs1)
+    assert all(doc.doc_id != "doc2" for doc in docs1)
 
     state_user2 = {"routes": ["health_general"], "user_query": "query2", "user_id": 2}
-    result2 = await retriever_node(state_user2, db_session)
-    docs2 = result2.get("retrieved_docs", [])
-    assert len(docs2) == 1
-    assert docs2[0]["doc_id"] == "doc2"
+    docs2 = await hybrid_retrieve("query2", db_session, user_id=state_user2["user_id"], doc_type_filter="health_general")
+    assert any(doc.doc_id == "doc2" for doc in docs2)
+    assert all(doc.doc_id != "doc1" for doc in docs2)
 
 @pytest.mark.asyncio
 async def test_retrieval_missing_user_id_returns_all(db_session: AsyncSession):
@@ -79,6 +79,5 @@ async def test_retrieval_missing_user_id_returns_all(db_session: AsyncSession):
     await db_session.commit()
 
     state = {"routes": ["health_general"], "user_query": "any query"}
-    result = await retriever_node(state, db_session)
-    docs = result.get("retrieved_docs", [])
-    assert any(d["doc_id"] == "public-doc" for d in docs)
+    docs = await hybrid_retrieve("any query", db_session, user_id=None, doc_type_filter="health_general")
+    assert any(d.doc_id == "public-doc" for d in docs)

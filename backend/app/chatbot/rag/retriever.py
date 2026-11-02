@@ -3,6 +3,7 @@ import re
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import or_
 from backend.app.core.config import settings
 from backend.app.models.chatbot import KnowledgeDocumentChunk
 from backend.app.chatbot.rag.embeddings import get_embedding, cosine_similarity
@@ -137,8 +138,10 @@ async def hybrid_retrieve(
     stmt = select(KnowledgeDocumentChunk)
     if doc_type_filter:
         stmt = stmt.where(KnowledgeDocumentChunk.doc_type == doc_type_filter)
-    if user_id is not None:
-        stmt = stmt.where(KnowledgeDocumentChunk.user_id == user_id)
+    if user_id is None:
+        stmt = stmt.where(KnowledgeDocumentChunk.user_id.is_(None))
+    else:
+        stmt = stmt.where(or_(KnowledgeDocumentChunk.user_id.is_(None), KnowledgeDocumentChunk.user_id == user_id))
     # TODO: min_trust_level filtering can be added similarly
     
     result = await db.execute(stmt)

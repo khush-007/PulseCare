@@ -26,6 +26,7 @@ def safety_postprocessor_node(state: ChatbotState) -> Dict[str, Any]:
     docs = state.get("retrieved_docs", [])
     tool_results = state.get("tool_results", [])
     is_emergency = state.get("is_emergency", False)
+    generation_failed = state.get("generation_failed", False)
 
     # 1. Determine Info Badge:
     # "verified" if sourced from live DB tools or official hospital documentation
@@ -33,7 +34,7 @@ def safety_postprocessor_node(state: ChatbotState) -> Dict[str, Any]:
     has_live_tools = any(t.get("result", {}).get("status") in ["success", "found_internal", "triage_assessed"] for t in tool_results)
     has_official_docs = any(d.get("trust_level") in ["official", "verified_clinical"] for d in docs)
     
-    if has_live_tools or has_official_docs or is_emergency:
+    if not generation_failed and (has_live_tools or has_official_docs or is_emergency):
         badge = "verified"
     else:
         badge = "general"
@@ -42,7 +43,7 @@ def safety_postprocessor_node(state: ChatbotState) -> Dict[str, Any]:
     citations: List[Dict[str, Any]] = []
     
     # Doc citations
-    for d in docs[:4]:
+    for d in ([] if generation_failed else docs[:4]):
         citations.append({
             "title": d.get("title", "PulseCare Documentation"),
             "section": d.get("section", "General"),
@@ -52,7 +53,7 @@ def safety_postprocessor_node(state: ChatbotState) -> Dict[str, Any]:
         })
 
     # Tool live data citations
-    for t in tool_results:
+    for t in ([] if generation_failed else tool_results):
         t_name = t.get("tool")
         if t_name in ["search_doctors", "get_doctor_profile", "get_doctor_availability"]:
             citations.append({
@@ -99,7 +100,7 @@ def safety_postprocessor_node(state: ChatbotState) -> Dict[str, Any]:
     # 3. Append Medical Disclaimer when discussing health, medicines, or triage
     needs_disclaimer = any(r in routes for r in ["medicine_info", "health_general", "triage_handoff"])
     final_answer = raw_answer
-    if needs_disclaimer and not is_emergency and MEDICAL_DISCLAIMER not in final_answer:
+    if needs_disclaimer and not is_emergency and not generation_failed and MEDICAL_DISCLAIMER not in final_answer:
         final_answer += MEDICAL_DISCLAIMER
 
     # 4. Strip any leaked internal strings or API keys

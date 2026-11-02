@@ -17,22 +17,44 @@ const DEFAULT_WELCOME_MESSAGE: ChatMessage = {
   ],
 };
 
-export function useChatbot(authToken?: string) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    const saved = localStorage.getItem('pulsecare_chat_history');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return [DEFAULT_WELCOME_MESSAGE];
-      }
-    }
-    return [DEFAULT_WELCOME_MESSAGE];
-  });
+function getChatStorageScope(authToken?: string): string {
+  if (!authToken) return 'guest';
 
-  const [sessionId, setSessionId] = useState<string | null>(() => {
-    return localStorage.getItem('pulsecare_session_id') || null;
-  });
+  try {
+    const payload = authToken.split('.')[1];
+    if (!payload) return 'authenticated';
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(window.atob(normalized));
+    if (typeof claims.sub === 'string' && claims.sub.length > 0) {
+      return `user-${claims.sub}`;
+    }
+  } catch {
+    // An unreadable token is still kept separate from the guest cache.
+  }
+
+  return 'authenticated';
+}
+
+function loadChatMessages(storageScope: string): ChatMessage[] {
+  const saved = localStorage.getItem(`pulsecare_chat_history:${storageScope}`);
+  if (!saved) return [DEFAULT_WELCOME_MESSAGE];
+  try {
+    return JSON.parse(saved);
+  } catch {
+    return [DEFAULT_WELCOME_MESSAGE];
+  }
+}
+
+function loadChatSessionId(storageScope: string): string | null {
+  return localStorage.getItem(`pulsecare_session_id:${storageScope}`);
+}
+
+export function useChatbot(authToken?: string) {
+  const storageScope = getChatStorageScope(authToken);
+  const [activeStorageScope, setActiveStorageScope] = useState(storageScope);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadChatMessages(storageScope));
+
+  const [sessionId, setSessionId] = useState<string | null>(() => loadChatSessionId(storageScope));
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
@@ -41,20 +63,33 @@ export function useChatbot(authToken?: string) {
     DEFAULT_WELCOME_MESSAGE.suggested_actions || []
   );
 
-  // Sync to local storage
+  // Switch local cache when the authenticated identity changes. A JWT subject
+  // is used only as a cache namespace; the server remains the authority.
   useEffect(() => {
+    if (activeStorageScope === storageScope) return;
+    setMessages(loadChatMessages(storageScope));
+    setSessionId(loadChatSessionId(storageScope));
+    setSuggestedActions(DEFAULT_WELCOME_MESSAGE.suggested_actions || []);
+    setError(null);
+    setActiveStorageScope(storageScope);
+  }, [activeStorageScope, storageScope]);
+
+  // Keep each account's browser cache and session ID in its own namespace.
+  useEffect(() => {
+    if (activeStorageScope !== storageScope) return;
     try {
-      localStorage.setItem('pulsecare_chat_history', JSON.stringify(messages));
+      localStorage.setItem(`pulsecare_chat_history:${storageScope}`, JSON.stringify(messages));
     } catch (e) {
       console.warn('Storage sync error', e);
     }
-  }, [messages]);
+  }, [activeStorageScope, messages, storageScope]);
 
   useEffect(() => {
-    if (sessionId) {
-      localStorage.setItem('pulsecare_session_id', sessionId);
-    }
-  }, [sessionId]);
+    if (activeStorageScope !== storageScope) return;
+    const key = `pulsecare_session_id:${storageScope}`;
+    if (sessionId) localStorage.setItem(key, sessionId);
+    else localStorage.removeItem(key);
+  }, [activeStorageScope, sessionId, storageScope]);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -181,12 +216,12 @@ export function useChatbot(authToken?: string) {
         console.warn('Backend clear session error:', e);
       }
     }
-    localStorage.removeItem('pulsecare_chat_history');
-    localStorage.removeItem('pulsecare_session_id');
+    localStorage.removeItem(`pulsecare_chat_history:${storageScope}`);
+    localStorage.removeItem(`pulsecare_session_id:${storageScope}`);
     setSessionId(null);
     setMessages([DEFAULT_WELCOME_MESSAGE]);
     setSuggestedActions(DEFAULT_WELCOME_MESSAGE.suggested_actions || []);
-  }, [sessionId, authToken]);
+  }, [sessionId, authToken, storageScope]);
 
   return {
     messages,

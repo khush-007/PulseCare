@@ -1,6 +1,6 @@
 from typing import List, Optional
 from pydantic_settings import BaseSettings
-from pydantic import Field, validator
+from pydantic import Field, model_validator, validator
 import os
 
 
@@ -36,12 +36,29 @@ class Settings(BaseSettings):
     # Chatbot & LLM Settings
     LLM_PROVIDER: str = Field(
         default="mock",
-        description="mock | gemini | openai | anthropic"
+        description="mock | gemini | openai"
     )
-    LLM_MODEL: str = Field(default="gemini-2.5-flash", description="LLM model name")
-    LLM_API_KEY: Optional[str] = Field(default=None, env="GEMINI_API_KEY")
+    LLM_MODEL: str = Field(default="gemini-3.8-flash", description="LLM model name")
+    LLM_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Provider API key; GEMINI_API_KEY remains a supported legacy alias",
+    )
+    GEMINI_API_KEY: Optional[str] = Field(
+        default=None,
+        repr=False,
+        exclude=True,
+        description="Legacy Gemini-only API key environment variable",
+    )
     LLM_BASE_URL: Optional[str] = None
-    LLM_TEMPERATURE: float = 0.1
+    LLM_TEMPERATURE: float = Field(default=0.1, ge=0.0, le=2.0)
+    LLM_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0.0, le=120.0)
+
+    @model_validator(mode="after")
+    def _resolve_llm_api_key(self):
+        primary_key = (self.LLM_API_KEY or "").strip()
+        legacy_key = (self.GEMINI_API_KEY or "").strip()
+        self.LLM_API_KEY = primary_key or legacy_key or None
+        return self
 
     # Embeddings & Reranker
     EMBEDDING_PROVIDER: str = Field(
@@ -71,6 +88,15 @@ class Settings(BaseSettings):
     CHAT_RATE_LIMIT_PER_MINUTE: int = 30
     CHAT_MAX_INPUT_LENGTH: int = 1500
     CHAT_MAX_HISTORY_TURNS: int = 10
+
+    # Optional chatbot knowledge sources. JSON keeps source paths and real CSV
+    # column names in deployment configuration rather than application logic.
+    CHATBOT_CSV_SOURCES_JSON: str = "[]"
+    PULSECARE_KNOWLEDGE_FILES_JSON: str = (
+        '["knowledge_base/pulsecare_faq.md", "knowledge_base/pulsecare_features.md", '
+        '"knowledge_base/pulsecare_policies.md"]'
+    )
+    MEDICAL_KNOWLEDGE_FILES_JSON: str = '["knowledge_base/medical_guidelines.md"]'
 
     # Document storage root for user uploads
     DOCUMENTS_ROOT: str = "./uploaded_documents"

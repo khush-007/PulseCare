@@ -26,9 +26,11 @@ class ChatbotState(TypedDict, total=False):
 
     # Step 4: Router
     routes: List[str]  # e.g. ["doctor_service_lookup", "medicine_info"]
+    intent_classification: List[str]
 
     # Step 5: Retrieval
     retrieved_docs: List[Dict[str, Any]]
+    source_failures: List[str]
     retrieval_retry_count: int
 
     # Step 6: Tool Execution
@@ -40,6 +42,7 @@ class ChatbotState(TypedDict, total=False):
 
     # Step 8: Answer Generation
     draft_answer: str
+    generation_failed: bool
 
     # Step 9: Grounding Verifier
     grounded: bool

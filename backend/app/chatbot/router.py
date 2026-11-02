@@ -25,6 +25,8 @@ from backend.app.schemas.chatbot import (
     IngestionResponse,
 )
 from backend.app.chatbot.memory.history import (
+    SessionAccessError,
+    get_accessible_session,
     get_or_create_session,
     save_message,
     get_session_history,
@@ -76,7 +78,12 @@ async def send_message(
     start_total = time.time()
 
     # 2. Retrieve or initialize session
-    session = await get_or_create_session(db, session_id=req.session_id, user=current_user)
+    try:
+        session = await get_or_create_session(
+            db, session_id=req.session_id, user=current_user
+        )
+    except SessionAccessError:
+        raise HTTPException(status_code=404, detail="Session not found.")
 
     # 3. Save incoming user message
     await save_message(
@@ -162,7 +169,12 @@ async def stream_chat_message(
         raise HTTPException(status_code=429, detail="Rate limit exceeded.")
 
     start_total = time.time()
-    session = await get_or_create_session(db, session_id=req.session_id, user=current_user)
+    try:
+        session = await get_or_create_session(
+            db, session_id=req.session_id, user=current_user
+        )
+    except SessionAccessError:
+        raise HTTPException(status_code=404, detail="Session not found.")
 
     await save_message(
         db=db,
@@ -273,12 +285,9 @@ async def rename_session(
     db: AsyncSession = Depends(get_db),
 ):
     """Rename an existing session; only owner can rename."""
-    result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
-    session = result.scalars().first()
+    session = await get_accessible_session(db, session_id, current_user)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    if session.user_id and (not current_user or session.user_id != current_user.id):
-        raise HTTPException(status_code=403, detail="Not authorized to rename this session")
     session.title = new_title
     await db.commit()
     await db.refresh(session)
@@ -288,9 +297,13 @@ async def rename_session(
 @router.get("/sessions/{session_id}/messages", response_model=List[MessageRead])
 async def get_messages(
     session_id: str,
+    current_user: Optional[User] = Depends(get_optional_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Retrieve message history for a specific conversation session."""
+    session = await get_accessible_session(db, session_id, current_user)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
     messages = await get_session_history(db, session_id=session_id)
     out = []
     for m in messages:

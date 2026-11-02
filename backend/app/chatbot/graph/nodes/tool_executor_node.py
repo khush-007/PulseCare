@@ -31,31 +31,9 @@ async def tool_executor_node(
             "args": {},
         })
 
-    # 2. Doctor & Service Lookup Route
-    if "doctor_service_lookup" in routes:
-        is_booking_intent = any(w in query for w in ["book", "schedule", "reserve"])
-        
-        # If specialty is mentioned or doctor name is mentioned, always search doctors
-        if entities.get("doctor_name") or entities.get("specialty") or not any(w in query for w in ["service", "services", "screening", "eeg"]):
-            planned_calls.append({
-                "tool": "search_doctors",
-                "args": {
-                    "name": entities.get("doctor_name"),
-                    "specialty": entities.get("specialty"),
-                    "day_of_week": entities.get("day_of_week"),
-                },
-            })
-
-        # If services/pricing specifically asked or diagnostic services
-        if any(w in query for w in ["service", "services", "fee", "cost", "price", "eeg", "cardiac evaluation", "screening"]):
-            planned_calls.append({
-                "tool": "list_services",
-                "args": {
-                    "department": entities.get("specialty"),
-                },
-            })
-
-    # 3. Medicine Info Route
+    # Public doctor/service retrieval runs through the configured source registry.
+    # Personal records and clinical triage remain on their guarded tool paths.
+    # Medicine Info Route
     if "medicine_info" in routes:
         med_name = entities.get("medicine_name")
         if not med_name:

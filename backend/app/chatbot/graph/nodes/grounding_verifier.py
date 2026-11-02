@@ -35,22 +35,7 @@ def grounding_verifier_node(state: ChatbotState) -> Dict[str, Any]:
     draft_lower = draft.lower()
 
     # Extract claims to verify:
-    # 1. Doctor names
-    doctor_names = ["sarah smith", "david chen", "priya patel", "elena garcia", "robert taylor"]
-    for doc in doctor_names:
-        if doc in draft_lower and doc not in evidence_lower:
-            # Fabricated doctor name not in evidence
-            return {
-                "grounded": False,
-                "final_answer": (
-                    "I don't have reliable, verified information on that in PulseCare records. "
-                    "Please browse our official Doctor Directory or contact support at 1-800-PULSE-CARE."
-                ),
-                "info_badge": "general",
-                "latency_records": {**state.get("latency_records", {}), "grounding_verifier": (time.time() - start_time) * 1000},
-            }
-
-    # 2. Currency/fee claims (e.g. $150, $250)
+    # Currency/fee claims must be present in the retrieved evidence.
     fee_matches = re.findall(r"\$\d+", draft)
     for fee in fee_matches:
         if fee not in evidence_text and (fee.lower() not in evidence_lower):

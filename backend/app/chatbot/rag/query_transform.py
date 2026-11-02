@@ -16,19 +16,34 @@ def rewrite_query_with_history(query: str, history: List[dict]) -> str:
     context_text = " ".join([t.get("content", "") for t in recent_turns])
 
     # Check for pronoun or contextual follow-up indicators
-    follow_up_cues = [" he ", " she ", " his ", " her ", " they ", " that ", " this ", " it ", " their "]
+    follow_up_cues = [
+        " he ", " she ", " his ", " her ", " they ", " that ", " this ", " it ", " their ",
+        " aur ", " unki ", " uski ", " unka ", " uska ", " iski ", " iska ", " woh ", " ye ",
+    ]
     has_cue = any(cue in f" {query.lower()} " for cue in follow_up_cues)
     
     # Extract entities from recent context if follow-up detected
     if has_cue:
         # Check if recent context mentioned a doctor
-        doc_match = re.search(r"\b(Dr\.\s+[A-Za-z]+(?:\s+[A-Za-z]+)?)\b", context_text)
+        doc_match = re.search(
+            r"\b(Dr\.?\s+[A-Za-z]+(?:\s+[A-Za-z]+){0,2})(?=\b|['’.,;:!?])",
+            context_text,
+            re.IGNORECASE,
+        )
+        if not doc_match:
+            # Previous verified directory responses render the doctor's name in bold.
+            doc_match = re.search(r"\*\*([A-Z][A-Za-z]+\s+[A-Z][A-Za-z]+)\*\*\s*[—-]", context_text)
         med_match = re.search(r"\b(Amoxicillin|Lisinopril|Metformin|Atorvastatin|Ibuprofen|Paracetamol|Albuterol|Omeprazole)\b", context_text, re.IGNORECASE)
         spec_match = re.search(r"\b(Cardiology|Neurology|Pediatrics|Dermatology|Orthopedics)\b", context_text, re.IGNORECASE)
         
         rewritten = query
-        if doc_match and any(p in query.lower() for p in ["he", "she", "his", "her", "that doctor"]):
-            rewritten = f"{query} [regarding {doc_match.group(1)}]"
+        if doc_match and any(p in query.lower() for p in [
+            "he", "she", "his", "her", "that doctor", "unki", "uski", "unka", "uska", "aur",
+        ]):
+            doctor_reference = doc_match.group(1).strip()
+            if not re.match(r"dr\.?\s", doctor_reference, re.IGNORECASE):
+                doctor_reference = f"Dr. {doctor_reference}"
+            rewritten = f"{query} [regarding {doctor_reference}]"
         elif med_match and any(p in query.lower() for p in ["it", "this medicine", "that drug", "dosage"]):
             rewritten = f"{query} [regarding {med_match.group(1)}]"
         elif spec_match and any(p in query.lower() for p in ["they", "there", "department"]):
